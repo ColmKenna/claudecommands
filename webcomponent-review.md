@@ -1,518 +1,595 @@
 ---
-description: Web Component Code Review
+description: "Guidelines for reviewing a JavaScript web component and producing an actionable remediation plan."
 ---
 
-ROLE
+# Web Component Code Review Prompt
 
-Act as a Senior Front-End Architect specializing in Security, Performance, Accessibility, and JavaScript Best Practices for production-grade Vanilla Web Components.
+## Role
 
-Constraints
+Act as a Senior Front-End Architect specializing in Security, Performance, Accessibility, and JavaScript Best Practices for production-ready Vanilla JavaScript Web Components.
 
-No frameworks: React, Vue, Angular, Lit, Svelte
+### Constraints
 
-No build tools: Webpack, Rollup, Babel, Vite
+- **No frameworks:** React, Vue, Angular, Lit, Svelte, etc.
+- **No build tools:** Webpack, Vite, Babel, Rollup, etc.
+- **Target environment:** Modern ES modules in evergreen browsers
+- **APIs:** Custom Elements v1 and Shadow DOM only
+- Do not propose framework migrations or build tool adoption as fixes
 
-ES modules only
+---
 
-Custom Elements v1 + Shadow DOM
+## Task
 
-No polyfills unless absolutely necessary for evergreen compatibility.
+Perform a rigorous, production-grade code review of the provided Web Component code and generate an actionable remediation plan.
 
-TASK
+---
 
-Perform a rigorous review of the supplied Web Component code.
-Your evaluation must cover:
+## Agent Execution Instructions
 
-Security & Web Component Best Practices
+AUTONOMOUS EXECUTION REQUIREMENT: Proceed without user confirmation until the review and remediation plan are complete. Only pause for user feedback if a blocking ambiguity requires clarification (for example, multiple components are present and the target is unclear).
 
-Performance & Efficiency
+---
 
-Accessibility (a11y)
+# Phase 1: Baseline Assessment
 
-General JavaScript Best Practices
+Complete these tasks before writing the review:
 
-Clarity & Readability
+1. Project Reconnaissance
+   - Inspect the project structure and locate the web component implementation(s)
+   - Identify the main component under review
+2. Documentation Review
+   - Read current docs (docs/*.md, README.md, readme.technical.md)
+   - Note intended behaviors, public APIs, and constraints
+3. Test Suite Snapshot (if available)
+   - Identify existing tests and coverage information
+   - Run tests if feasible; document any failures you did not cause
 
-Dead or Redundant Code
+---
 
-Comment Quality
+# Phase 2: Code Review
 
-All findings must include actionable, Vanilla-JS-compliant suggestions.
+Perform a rigorous, production-grade review of the provided Web Component code. Your review must cover all categories below.
 
-1. Security & Web Component Best Practices
-XSS & Injection
+## 1. Security and Web Component Best Practices
 
-Flag all unsafe DOM operations, including:
+### XSS and Injection Risks
 
-HTML sinks
+- Flag dangerous HTML injection patterns:
+  - `innerHTML`, `outerHTML`, `insertAdjacentHTML`
+  - Template string injection into DOM without sanitization
+- Flag dynamic attribute assignments that could execute scripts:
+  - `setAttribute('onclick', ...)`, `el.onclick = userInput`, `el.href = 'javascript:...'`
+- Evaluate safety of slotted content handling - ensure slots cannot inject malicious markup into component logic
 
-innerHTML
+### Shadow DOM Encapsulation
 
-outerHTML
+- Verify correct use of `this.attachShadow({ mode: 'open' | 'closed' })`
+- Confirm scoped DOM queries (no leaking selectors to light DOM)
+- Verify style isolation is maintained
 
-insertAdjacentHTML
+### CSP and Trusted Types
 
-Element.innerHTML = \...${userInput}``
+- Evaluate compatibility with Content Security Policy
+- Recommend Trusted Types API usage where applicable for innerHTML-like operations
 
-Incorrect attribute assignments
+### Custom Element Lifecycle
 
-button.onclick = userValue
+- Review correct usage of lifecycle callbacks:
+  - `constructor` - no DOM access, no attributes, no children
+  - `connectedCallback` - setup, event listeners, observers
+  - `disconnectedCallback` - full cleanup of listeners, observers, timers, subscriptions, AbortControllers
+  - `attributeChangedCallback` - attribute handling, property reflection
+  - `adoptedCallback` - document transition handling (if applicable)
+- Confirm no DOM manipulation occurs in the constructor
 
-el.setAttribute('onclick', userValue)
+### Anti-Patterns
 
-Dangerous URLs: href="javascript:..."
+- Identify web component anti-patterns:
+  - Synchronous heavy work in lifecycle hooks
+  - Reading layout properties immediately after DOM writes (forced reflow)
+  - Failing to clean up resources on disconnect
+  - Using `document.querySelector` instead of `this.shadowRoot.querySelector`
 
-Example dangerous patterns:
-this.shadowRoot.innerHTML = `<div>${this.data}</div>`; // UNSAFE
+---
 
-el.href = userProvidedURL; // Might allow "javascript:" payload
+## 2. Performance and Efficiency
 
-Slot Security
+### DOM Manipulation
 
-Check for risks where slotted content can manipulate component logic:
+- Detect inefficient patterns:
+  - Repeated `querySelector` / `querySelectorAll` calls for the same elements
+  - Layout thrashing (interleaved reads and writes)
+  - Unnecessary re-renders or redundant DOM updates
 
-Using slotted selectors inside shadowRoot
+### Optimization Techniques
 
-Treating slotted HTML as trusted
+- Recommend where applicable:
+  - Element caching (store references after initial query)
+  - `DocumentFragment` for batch insertions
+  - `requestAnimationFrame` for visual updates
+  - Microtask scheduling (`queueMicrotask`) for batched state updates
+  - Debouncing/throttling for high-frequency events
 
-Querying slotted nodes for logic-critical operations
+### Style Performance
 
-Shadow DOM Encapsulation
+- Recommend `adoptedStyleSheets` over repeated inline `<style>` elements for style reuse
+- Flag dynamically created `<style>` tags on every render
 
-Ensure:
+### Attribute Handling
 
-Proper attachShadow({ mode: 'open' }) usage
+- Verify efficient handling of `observedAttributes`
+- Check attribute-to-property reflection is not causing unnecessary updates
+- Ensure `attributeChangedCallback` guards against no-op changes
 
-No queries leaking to global document
+### Memory Management
 
-Styles scoped correctly
+- Identify potential memory leaks:
+  - Retained references to removed DOM nodes
+  - Orphaned closures holding component references
+  - Event listeners not removed on disconnect
+  - Uncleared timers or intervals
 
-No reliance on global CSS resets
+### Lazy Initialization
 
-CSP & Trusted Types
+- Suggest lazy initialization or deferred rendering for:
+  - Components not immediately visible (below fold, collapsed sections)
+  - Heavy sub-components that can be loaded on demand
 
-Identify HTML injection paths not compatible with strict CSP
+### Blocking Operations
 
-Recommend Trusted Types for HTML sinks if the project uses CSP
+- Flag synchronous or heavy computations that may block the main thread
+- Recommend Web Workers or chunked processing for CPU-intensive tasks
 
-Avoid inline event attributes or inline scripts
+---
 
-Lifecycle Correctness
-Constructor
+## 3. Accessibility (a11y)
 
-No DOM manipulation
+### Semantic HTML
 
-No attribute reading
+- Verify correct semantic HTML within Shadow DOM boundary
+- Ensure ARIA supplements (not replaces) native semantics
+- Flag div/span soup where semantic elements should be used
 
-No event listener setup
+### Keyboard Accessibility
 
-Only set up state and class fields
+- Verify logical focus order and tabbing
+- Check arrow-key navigation for composite widgets (menus, listboxes, tabs, grids)
+- Ensure no mouse-only interactions exist
+- Flag missing `tabindex` on custom interactive elements
 
-connectedCallback
+### Focus Management
 
-Query DOM
+- Evaluate focus trapping for modal/overlay components
+- Verify focus restoration when dialogs close
+- Check programmatic focus calls (`focus()`) are appropriate
 
-Attach event listeners
+### Labeling and Descriptions
 
-Initialize observers
+- Confirm proper use of:
+  - `aria-label`
+  - `aria-labelledby`
+  - `aria-describedby`
+- Verify Shadow DOM does not obstruct accessible name computation
+- Check that labels are associated correctly across shadow boundaries
 
-Render content
+### Form Participation
 
-Read attributes safely
+- For form-associated components, verify:
+  - Use of `ElementInternals` API
+  - `static formAssociated = true` declaration
+  - Proper form validation and submission participation
 
-disconnectedCallback
+### Dynamic Content
 
-Remove all listeners
+- Evaluate live regions (`aria-live`, `role="status"`, `role="alert"`) for dynamic announcements
+- Ensure state changes are communicated to assistive technology
 
-observer.disconnect()
+### Motion and Animation
 
-Clear timers/intervals
+- Check for `prefers-reduced-motion` media query support
+- Flag animations that cannot be disabled
 
-Abort pending fetches
+### Visual Considerations
 
-Release references to avoid retaining DOM
+- Note contrast concerns when determinable from code
+- Consider `forced-colors` / high-contrast mode support for critical UI indicators
 
-attributeChangedCallback
+---
 
-Normalize incoming attribute values
+## 4. General JavaScript Best Practices
 
-Guard against repeats
+### Code Quality
 
-Update DOM only when necessary
+- Flag overuse of global variables or state leaking outside the component
+- Identify poor variable naming or unclear function purpose
+- Detect side effects in unexpected places (getters, constructors)
 
-Additional Anti-Patterns
+### Maintainability
 
-Performing heavy computations in connectedCallback
+- Check for modular structure with clear separation of concerns
+- Identify repeated logic that should be extracted to helper functions
+- Flag complex or deeply nested branching that should be simplified
+- Recommend private fields (`#privateField`) for internal state
 
-Observers created but never disconnected
+### Correctness
 
-Measuring layout via offsetHeight right after writing styles
+- Check for incorrect or inconsistent use of `this`
+- Flag missing `const` / `let` or unintended `var` usage
+- Identify misuse of Promises, `async/await`, or event handling
+- Flag error-prone patterns:
+  - Mutation of shared references
+  - Incorrect array/object copying (shallow vs. deep)
+  - Missing `await` on async operations
 
-Attaching listeners to global elements (e.g., window/document) without cleanup
+### Error Handling
 
-2. Performance & Efficiency
-DOM Manipulation
+- Verify `try/catch` around async operations
+- Check for graceful fallbacks when APIs are unavailable
+- Ensure errors do not silently fail or break component state
 
-Flag patterns such as:
+### Input Validation
 
-Re-querying identical elements on each render
+- Validate and sanitize all external inputs:
+  - Attributes
+  - Slot content
+  - User-provided data
+  - URL parameters
 
-Creating new nodes instead of reusing existing ones
+### Modern JS Practices
 
-Using .innerHTML for repeated template updates
+- Encourage:
+  - `const` for immutable references, `let` only when reassignment is needed
+  - Minimal mutation; prefer creating new objects/arrays
+  - Template literals over string concatenation
+  - `Map` / `Set` when appropriate over plain objects/arrays
+  - Optional chaining (`?.`) and nullish coalescing (`??`)
+  - Private class fields (`#field`) for encapsulation
 
-Removing/replacing whole subtrees unnecessarily
+### Documentation
 
-Example to flag:
+- Recommend JSDoc type annotations for public API methods
+- Verify public interface (attributes, properties, methods, events) is documented
 
-for (const item of items) {
-  this.shadowRoot.querySelector('.value').textContent = item; // repeated query
-}
+---
 
-Rendering Optimization
+## 5. Code Clarity and Readability
 
-Use cached references for elements frequently updated
+### Self-Documenting Code
 
-Batch DOM writes
+- Verify the component's purpose is immediately apparent from its class name, file structure, and public API
+- Flag methods or logic blocks that require mental gymnastics to understand
+- Identify magic numbers, cryptic variable names, or unexplained boolean flags
+- Check that the component's public interface (attributes, properties, methods, events, slots) clearly communicates its intended usage
 
-Use DocumentFragment for constructing large DOM blocks
+### Structural Clarity
 
-Avoid rerendering entire component when only small parts change
+- Evaluate whether the code follows a logical, predictable organization:
+  - static properties -> constructor -> lifecycle -> public methods -> private methods -> event handlers
+- Flag deeply nested conditionals or callbacks that obscure control flow
+- Identify overly long methods that should be decomposed into smaller, named functions
+- Check that related functionality is grouped together, not scattered throughout the file
 
-rAF / microtasks
+### Naming Conventions
 
-Use requestAnimationFrame for animations and layout-sensitive updates
+- Verify method names clearly describe their action (verbs for methods, nouns for properties)
+- Flag ambiguous names: `handle()`, `process()`, `doIt()`, `temp`, `data`, `value`
+- Check consistency in naming patterns throughout the component
 
-Use queueMicrotask to combine synchronous state updates
+---
 
-Style Efficiency
+## 6. Dead Code and Unreachable Paths
 
-Prefer adoptedStyleSheets for shared/static styles
+### Unreachable Code
 
-Place static CSS outside the render routine
+- Identify code after `return`, `throw`, or `break` statements that can never execute
+- Flag conditional branches that can never be true based on type or logic analysis
+- Detect methods or properties that are defined but never called or accessed
+- Identify event listeners registered for events that are never dispatched
 
-Avoid adding new <style> on each update
+### Redundant Code
 
-Avoid reading styles after writing them in the same frame
+- Flag duplicate logic that could be consolidated into shared helper methods
+- Identify variables that are assigned but never read
+- Detect unnecessary re-declarations or re-assignments
+- Flag `else` blocks that mirror the `if` block or are otherwise superfluous
 
-Attribute Handling
+### Obsolete Code
 
-Minimize observedAttributes to necessary ones
+- Identify commented-out code blocks that should be removed
+- Flag TODO/FIXME comments referencing completed or abandoned work
+- Detect polyfills or workarounds for browser features now universally supported in evergreen browsers
 
-Avoid reflecting attribute changes that don’t alter behavior
+---
 
-Convert string attributes to expected types efficiently (boolean, number, enum)
+## 7. Comment Quality
 
-Memory Management
+### Redundant Comments
 
-Remove DOM listeners, custom events, and global listeners
+- Flag comments that merely restate what the code already expresses:
+  - `// increment counter` above `counter++`
+  - `// constructor` above `constructor()`
+  - `// returns the value` above `return this.value`
+- Identify excessive inline comments that clutter readable code
 
-Disconnect IntersectionObserver, ResizeObserver, MutationObserver
+### Missing Comments
 
-Clean up closures that retain DOM references
+- Flag complex algorithms, regex patterns, or non-obvious logic lacking explanatory comments
+- Identify workarounds or browser-specific hacks without documentation of why they exist
+- Check that public API methods have clear descriptions of parameters, return values, and side effects
 
-Ensure timers are cleared
+### Outdated Comments
 
-Avoid long-lived references to nodes that will be removed
+- Flag comments that contradict or no longer match the code they describe
+- Identify version-specific comments referencing outdated browser support
 
-Heavy/Blocking Work
+### Comment Style
 
-Flag large loops, expensive calculations, JSON parsing, or text processing
+- Recommend JSDoc for public API documentation when absent
+- Flag informal or unprofessional comment language inappropriate for production code
 
-Recommend splitting work with setTimeout, microtasks, or Workers
+---
 
-3. Accessibility (a11y)
-Semantic Structure
+## Review Principles
 
-Use HTML elements with correct semantics instead of <div>
+- **Accuracy over volume:** Only report genuine issues. Do not fabricate or exaggerate problems to fill the table.
+- **Actionable specificity:** Every suggestion must include concrete code patterns or techniques the developer can immediately apply.
+- **Proportional severity:** Reserve High priority for issues that could cause security vulnerabilities, data loss, accessibility barriers, or significant performance degradation in production.
 
-Use role only when necessary
+---
 
-Keyboard Support
+## Output Format
 
-Must support:
+### 1. Summary (1-3 sentences)
 
-Tab navigation to all interactive elements
+Provide a brief overall assessment of the component's health regarding:
 
-Space/Enter activation for custom buttons
+- Security
+- Performance
+- Accessibility
+- Code clarity and quality
 
-Arrow navigation for menus/listboxes/tabs
+### 2. Issues Table
 
-Escape key to close dialogs
+Produce a Markdown table with exactly these columns:
 
-Ensure no keyboard traps
+| Priority | Category | Code Location | Explanation & Suggestion |
+|----------|----------|---------------|--------------------------|
+| High / Medium / Low | Security / Performance / Lifecycle / Accessibility / General JS / Clarity / Dead Code / Comments / Other | Method name, selector, snippet, or line number | Detailed explanation with actionable Vanilla JS recommendation |
 
-Focus Management
+#### Table Requirements
 
-Maintain focus order
+- List all issues regardless of severity
+- Sort by Priority: High -> Medium -> Low
+- Use method names, CSS selectors, or code snippets for Code Location (line numbers if available)
+- All recommendations must be 100% Vanilla JS + Web Components compliant
+- Do not suggest frameworks, libraries, or build tools
 
-Implement focus trapping in modals/menus
+#### Priority Definitions
 
-Restore focus after closing interactive UI
+- **High:** Security vulnerabilities, accessibility blockers, memory leaks, or patterns that will cause failures in production
+- **Medium:** Performance inefficiencies, lifecycle issues, maintainability concerns, or accessibility issues that degrade (but do not block) user experience
+- **Low:** Code style improvements, minor optimizations, documentation gaps, or enhancements that improve but are not essential for production readiness
 
-Avoid auto-focusing without user intent
+### 3. Positive Notes (Optional)
 
-Labels & Descriptions
+Include a few Low-priority "Positive Note" rows for strong patterns or well-implemented sections worth highlighting.
 
-Examples to include:
+### 4. Clean Code Response
 
-<button aria-label="Open menu"></button>
-<label id="label1">Name</label>
-<input aria-labelledby="label1">
+If the component has no issues in a given category, explicitly state this rather than omitting the category or fabricating concerns.
 
-Name Calculation
+If the component has no issues across all categories, respond with:
 
-Ensure shadow DOM structure still allows accessible names
+#### Summary
 
-Avoid hiding label relationships
+The component demonstrates production-ready quality with no significant issues identified across security, performance, accessibility, or code quality dimensions.
 
-Forms
+#### Issues
 
-Implement form-associated custom elements when needed
+| Priority | Category | Code Location | Explanation & Suggestion |
+|----------|----------|---------------|--------------------------|
+| - | - | - | No issues identified |
 
-Use ElementInternals:
+Then proceed to the Positive Notes section highlighting the component's strengths.
 
-setFormValue()
+---
 
-setValidity()
+## Optional Extensions
 
-proper validation messages
+The following extensions are available when explicitly requested. To invoke, the user will include one or more of these directives:
 
-Dynamic Updates
+| Directive | Extension | Description |
+|-----------|-----------|-------------|
+| `[WCAG]` | WCAG Level Tagging | Tag accessibility issues with WCAG 2.1 level (A / AA / AAA) |
+| `[A11Y-TEST]` | Accessibility Testing Guidance | Manual and automated testing recommendations (axe, Lighthouse, screen reader testing) |
+| `[PERF]` | Performance Benchmarks | RUM metrics, render timing analysis, Chrome DevTools profiling guidance |
+| `[SECURITY]` | Security Hardening | Trusted Types implementation, CSP configuration recommendations |
 
-Use live regions where content changes meaningfully
+When an extension directive is present, include the corresponding additional analysis after the main Issues table.
 
-Avoid using live regions excessively
+---
 
-Motion / Reduced Motion
+## Example Output
 
-Support prefers-reduced-motion
+### Summary
 
-Provide alternatives for motion-heavy interactions
+The component has moderate security concerns due to unescaped `innerHTML` usage, good performance patterns overall, several accessibility gaps in keyboard navigation and labeling, and generally clean JavaScript with minor improvements needed for error handling and code clarity.
 
-Visual Considerations
+### Issues
 
-Maintain sufficient contrast
+| Priority | Category | Code Location | Explanation & Suggestion |
+|----------|----------|---------------|--------------------------|
+| High | Security | `render()` method | Uses `innerHTML` with user-provided data without sanitization. Suggestion: Use `textContent` for text, or create elements programmatically with `document.createElement()`. |
+| High | Accessibility | `<div class="button">` | Interactive element uses non-semantic markup. Suggestion: Replace with `<button>` or add `role="button"`, `tabindex="0"`, and keyboard event handlers. |
+| Medium | Performance | `connectedCallback` | Queries `this.shadowRoot.querySelector('.item')` on every call. Suggestion: Cache the reference in a class property after first query. |
+| Medium | Lifecycle | `disconnectedCallback` | Missing cleanup for `ResizeObserver`. Suggestion: Store observer reference and call `observer.disconnect()` in `disconnectedCallback`. |
+| Medium | Clarity | `_processData()` method | 47-line method with 5 levels of nesting obscures control flow. Suggestion: Extract validation, transformation, and persistence into separate private methods. |
+| Low | General JS | `handleClick()` | Uses `var` instead of `const`. Suggestion: Replace with `const` for immutable references. |
+| Low | Dead Code | `_legacyHandler()` | Method is defined but never called anywhere in the component. Suggestion: Remove if no longer needed, or document its intended usage. |
+| Low | Comments | Line 42 | Comment `// loop through items` above `items.forEach()` restates the obvious. Suggestion: Remove redundant comment or replace with explanation of why the iteration is needed. |
+| Low | Positive Note | `attributeChangedCallback` | Correctly guards against no-op changes before updating DOM. Well implemented. |
+| Low | Positive Note | Style encapsulation | Proper use of `adoptedStyleSheets` for performant, reusable styling. |
 
-Ensure focus outlines remain visible
+---
 
-Check forced-colors mode compatibility
+# Phase 3: Remediation Plan
 
-4. General JavaScript Best Practices
-Code Quality
+Based on the review, generate a prioritized remediation plan with phases that are independently testable and deployable.
 
-Avoid implicit globals
+## Executive Summary
 
-Prefer pure functions where possible
+Provide a brief (3-5 sentence) overview:
+- Total number of issues by priority (High / Medium / Low)
+- Key risk areas requiring immediate attention
+- Estimated complexity for full remediation
+- Recommended approach (single PR, phased rollout, etc.)
 
-Avoid side effects in getters/setters
+## Phase Structure Template
 
-Ensure consistent naming
+```markdown
+## Phase [N]: [Phase Title]
 
-Keep class methods small and single-purpose
+**Goal:** [One-sentence description]
+**Risk Level:** Low / Medium / High
+**Dependencies:** [List phases that must complete first, or "None"]
+**Estimated Effort:** XS / S / M / L / XL
 
-Maintainability
+### Tasks
 
-Use private fields (#field) for internal state
+| Task # | Issue Reference | Task Description | Acceptance Criteria | Existing Tests | New Tests Required |
+|--------|-----------------|------------------|---------------------|----------------|-------------------|
+| [N.1]  | [Priority-Category-Location] | [Specific action] | [Verification method] | [Tests that must pass] | [New tests to add] |
+```
 
-Avoid deeply nested logic
+### Phase Guidelines
 
-Extract reusable logic into helper functions
+- Phase 1: High-priority security issues
+- Phase 2: Remaining high-priority issues (accessibility, performance, lifecycle)
+- Phase 3+: Medium-priority issues grouped by related code or patterns
+- Final Phase: Low-priority issues and enhancements
+- Each phase should have 3-7 tasks
 
-Keep rendering separated from data logic
+## Test Plan
 
-Correctness
+For each issue, specify:
 
-Validate input types
+| Issue Reference | Test Type | Test Description | Test File Location |
+|----------------|-----------|------------------|-------------------|
+| [From review] | Regression | [Test that would have caught the bug] | [path] |
+| [From review] | Validation | [Test that confirms the fix works] | [path] |
+| [From review] | Edge Case | [Test for boundary conditions] | [path] |
 
-Avoid mutating shared objects
+## Risk Assessment
 
-Avoid mixing sync/async flows incorrectly
+| Risk | Likelihood | Impact | Mitigation Strategy |
+|------|------------|--------|---------------------|
+| [Description] | Low/Medium/High | Low/Medium/High | [How to reduce or avoid] |
 
-Ensure promises are handled and not left dangling
+## Code Change Previews
 
-Avoid "magic" values—extract constants
+For high-priority issues, provide before and after code snippets:
 
-Error Handling
+```markdown
+#### Issue: [Reference]
 
-Wrap async work in try/catch
+**Before:**
+```javascript
+// Problematic code
+```
 
-Provide fallback values
+**After:**
+```javascript
+// Fixed code
+```
 
-Handle invalid state or data gracefully
+**Explanation:** [Why this fixes the issue]
+```
 
-Input Validation
+---
 
-Check all attribute values
+# Deliverables Checklist
 
-Validate user data passed into the component
+- Code review document created using the Output Format above
+- Remediation plan created
+- Findings ordered by severity with clear code locations
+- Recommendations avoid frameworks and build tools
+- Test plan covers regression, validation, and edge cases
+- Residual risks or test gaps noted if no issues found
 
-Avoid unsafe defaults
+---
 
-Modern Patterns
+# Output File Templates
 
-Prefer destructuring
+## docs/code-review-YYYY-MM-DD.md
 
-Template literals for string building
+```markdown
+# Code Review: [Component Name]
 
-Spread syntax instead of manual copying
+**Date:** [YYYY-MM-DD]
+**Reviewer:** Codex (Automated)
+**Scope:** Web component review
 
-Optional chaining + nullish coalescing
+## Summary
 
-Use Map/Set for structured data
+[1-3 sentence summary]
 
-Documentation
+## Issues
 
-JSDoc for all public APIs
+| Priority | Category | Code Location | Explanation & Suggestion |
+|----------|----------|---------------|--------------------------|
+| High/Medium/Low | Security/Performance/Lifecycle/Accessibility/General JS/Clarity/Dead Code/Comments/Other | [Method or line] | [Actionable suggestion] |
 
-Document custom events: name + payload
+## Positive Notes
 
-Document lifecycle expectations
+[Optional]
 
-5. Code Clarity & Readability
-Self-Documenting Code
+## Extensions
 
-Explicit, intention-revealing names
+[Optional; only when directives requested]
+```
 
-Avoid compound or unclear conditionals
+## docs/remediation-plan-YYYY-MM-DD.md
 
-Minimize flags; if needed, name them clearly (isOpen, isActive)
+```markdown
+# Remediation Plan: [Component Name]
 
-Structure
+**Generated:** [YYYY-MM-DD]
+**Based on:** code-review-YYYY-MM-DD.md
 
-Use consistent ordering:
-static → constructor → lifecycle → public methods → private methods → event handlers → helpers
+## Executive Summary
 
-Code Layout
+[3-5 sentences]
 
-Avoid long functions (>30 lines)
+## Phase 1: [Title]
 
-Keep logic blocks grouped
+**Goal:** [Description]
+**Risk:** [Level]
+**Effort:** [Size]
 
-Prefer early returns to reduce nesting
+| Task | Issue | Description | Acceptance | Tests |
+|------|-------|-------------|------------|-------|
+| 1.1 | H-Sec-render | Replace innerHTML | No XSS vectors | +2 new |
 
-Naming Conventions
+[Continue for all phases...]
 
-Methods = verbs: renderList, updateState
+## Risk Assessment
 
-Properties = nouns: items, value
+[Table of risks]
 
-Booleans = is*/has*
+## Test Plan
 
-Avoid generic names: temp, value, dataObj
+[Table of required tests]
 
-6. Dead / Redundant Code
-Unreachable
+## Code Previews
 
-Code after return/throw/break
+[Before and after for high-priority items]
+```
 
-Conditions that are always true/false
+---
 
-Event handlers for never-emitted events
+# Success Criteria
 
-Redundant
-
-Repeated logic that can be extracted
-
-Variables assigned but unused
-
-Duplicate definitions of the same method
-
-Obsolete
-
-Legacy code commented out
-
-Old TODO/FIXME comments
-
-Polyfills unnecessary for evergreen browsers
-
-7. Comment Quality
-Redundant
-
-Comments that restate code behavior
-
-Missing
-
-Add comments for:
-
-Complex branching
-
-Regex patterns
-
-Browser workarounds
-
-Non-intuitive algorithmic logic
-
-Outdated
-
-Remove or update comments that contradict the code
-
-Style
-
-Use professional tone
-
-Prefer short, precise comments
-
-Use JSDoc-style for public API methods
-
-Comments explain why, not what
-
-Review Principles
-
-Only report actual, reproducible issues
-
-Suggestions must be actionable and Vanilla-JS compliant
-
-Prioritize security → accessibility → performance → maintainability
-
-Severity ordering: High → Medium → Low
-
-OUTPUT FORMAT
-1. Summary
-
-A short (1–3 sentence) evaluation of security, performance, accessibility, and clarity.
-
-2. Issues Table
-
-Use the following structure:
-
-Priority	Category	Location	Explanation & Suggestion
-
-Priority definitions:
-
-High: Security issues, accessibility blockers, memory leaks, crash-level issues
-
-Medium: Lifecycle misuse, performance inefficiencies, maintainability issues
-
-Low: Readability, documentation, stylistic issues
-
-Rules:
-
-Include all issues
-
-Sorted High → Medium → Low
-
-Use method names, selectors, or snippets for “Location”
-
-All suggestions must be compatible with Vanilla JS + Web Components
-
-3. Positive Notes
-
-Optional section highlighting strengths (proper cleanup, good encapsulation, efficient DOM updates, strong a11y patterns).
-
-4. Clean Code Response
-
-If no issues exist, return a table with one row:
-No issues identified, followed by Positive Notes.
-
-Optional Extensions
-
-Activated only if specified:
-
-[WCAG] — Tag a11y issues by WCAG A/AA/AAA
-
-[A11Y-TEST] — Provide testing guidance (axe, Lighthouse, NVDA, JAWS, VoiceOver)
-
-[PERF] — Provide profiling techniques, metrics, and DevTools instructions
-
-[SECURITY] — Provide CSP & Trusted Types hardening recommendations
+1. Comprehensive review of the component with prioritized findings across all categories
+2. Actionable remediation plan with clear tasks and acceptance criteria
+3. Test plan covers regressions, validations, and edge cases
+4. Recommendations preserve the vanilla web component architecture
