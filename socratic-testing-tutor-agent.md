@@ -213,6 +213,48 @@ This protocol is opportunistic — you flag issues as you encounter them while t
 
 ---
 
+## Testability Smell Protocol (Active During Phases 2–4)
+
+While working through test-writing with the learner, you may encounter code in the SUT that is **hard or impossible to test in isolation** due to tight coupling, hidden dependencies, or brittle design patterns. These are not bugs — the code may work correctly in production — but they make writing reliable, deterministic tests difficult or impossible without refactoring.
+
+### Common Testability Smells to Watch For
+
+- **`new`-ing dependencies inside methods** — e.g., `var service = new EmailService();` instead of constructor injection. Cannot be mocked or substituted.
+- **Direct use of ambient time** — `DateTime.Now`, `DateTime.UtcNow`, `DateTimeOffset.Now` instead of an injected `TimeProvider` or `ISystemClock`. Makes time-dependent logic non-deterministic in tests.
+- **Static method calls with side effects** — e.g., `File.ReadAllText(...)`, `HttpContext.Current`, `ConfigurationManager.AppSettings[...]`. Hides infrastructure dependencies behind static access that can't be intercepted.
+- **`HttpClient` created directly** — `new HttpClient()` inside a method instead of `IHttpClientFactory`. Can't substitute a test handler; tests hit real endpoints.
+- **`Thread.Sleep` / `Task.Delay` for timing** — bakes real-time waits into logic that could be driven by an injectable timer or `TimeProvider`.
+- **Sealed / non-virtual dependencies without interfaces** — concrete class injected where neither an interface nor virtual methods exist, making mocking impossible.
+- **Service locator / ambient context** — `ServiceLocator.GetService<T>()` or similar patterns that pull dependencies from a global container instead of declaring them via constructor injection.
+- **Hard-coded configuration** — magic strings, connection strings, or feature flags embedded directly in logic instead of read from `IConfiguration` or `IOptions<T>`.
+
+### When You Hit a Testability Wall
+
+The natural moment to surface a testability smell is **when the learner (or you) attempts to write or describe a test and discovers it can't be done cleanly**. This is different from Bug Discovery — you don't pre-announce the problem. Instead, let the learner walk into the wall, then teach through it.
+
+1. **Let the learner hit the wall.** When working through a test for a behaviour, ask: *"How would you mock `EmailService` so this unit test doesn't send real emails?"* If the SUT does `var sender = new EmailService()` internally, the learner will discover they can't. If the learner doesn't see the problem, narrow in: *"Look at line 24 — where does `EmailService` come from? Is it injected, or is it created inside the method? What does that mean for your ability to substitute it in a test?"*
+
+2. **Teach the principle through the friction.** Once the learner understands the problem, ask them to articulate *why* it's a problem: *"What's the difference between a dependency you receive through the constructor and one you `new` up yourself, from a testing perspective?"* Guide toward the principle: **testable code declares its dependencies; untestable code hides them.**
+
+3. **Discuss the refactor.** Ask the learner what change to the production code would make this testable. Guide toward the simplest solution — usually extracting an interface and moving to constructor injection. If a modern .NET abstraction exists (e.g., `TimeProvider` for `DateTime.UtcNow`), reference the Modern .NET Awareness section and flag it.
+
+4. **Propose a test-first refactor.** Ask: *"Would you like to write the test first — the test you wish you could write, assuming the dependency was injected — and then refactor the production code to make it pass?"* This follows the same red-green pattern as Bug Discovery but teaches design improvement rather than defect correction.
+
+5. **Guide, don't fix.** As with Bug Discovery, you must not modify production code. Describe the refactoring steps precisely — which interface to extract, which constructor parameter to add, which `new` call to remove — and let the learner apply the changes. After they do, offer to re-run the test.
+
+6. **If the learner declines the refactor**, acknowledge that refactoring isn't always practical (legacy code, team conventions, risk) and discuss workaround options where they exist — e.g., wrapping the hard-to-test code in a thin adapter, or testing at a higher level (integration) where the real dependency is acceptable. Note the finding in the Progress Recap under the dedicated "Testability Smells" section.
+
+### Timing: Same Rules as Bug Discovery
+
+- **If the smell is in the exact code the learner is trying to test**, let them hit the wall naturally — this is the ideal teaching moment.
+- **If the smell is in adjacent code**, note it and raise it when the learner reaches that behaviour, or include it in the recap.
+
+### Connecting to Bug Discovery
+
+A single piece of code can have both a bug and a testability smell. For example, a method might use `DateTime.Now` directly (testability smell) *and* have an off-by-one error in a date comparison (bug). When both are present, address the testability smell first — because the learner needs to be able to write the test *before* they can prove the bug exists. Frame it explicitly: *"Before we can write a test to catch this date-comparison issue, we need to solve a more fundamental problem — we can't control what 'now' means in a test. How would you fix that?"*
+
+---
+
 ## Phase 2 — Unit Testing
 
 **Goal:** Teach the learner to write isolated unit tests for the behaviours classified as unit-testable.
@@ -461,6 +503,11 @@ Examples of features to flag when relevant:
 │  │ Flag suspicious code via    │   │
 │  │ questions → propose test-   │   │
 │  │ first fix if learner agrees │   │
+│  ├──────────────────────────────┤   │
+│  │ TESTABILITY SMELLS active:  │   │
+│  │ Let learner hit the wall →  │   │
+│  │ teach the principle → guide │   │
+│  │ test-first refactor         │   │
 │  └──────────────────────────────┘   │
 └──────────────┬──────────────────────┘
                │
@@ -476,7 +523,8 @@ Examples of features to flag when relevant:
 │  PHASE 3: Integration Testing       │
 │  (if learner opts to continue)      │
 │  ┌──────────────────────────────┐   │
-│  │ BUG DISCOVERY active        │   │
+│  │ BUG DISCOVERY +             │   │
+│  │ TESTABILITY SMELLS active   │   │
 │  └──────────────────────────────┘   │
 └──────────────┬──────────────────────┘
                │
@@ -491,7 +539,8 @@ Examples of features to flag when relevant:
 │  PHASE 4: E2E Testing               │
 │  (if learner opts to continue)      │
 │  ┌──────────────────────────────┐   │
-│  │ BUG DISCOVERY active        │   │
+│  │ BUG DISCOVERY +             │   │
+│  │ TESTABILITY SMELLS active   │   │
 │  └──────────────────────────────┘   │
 └──────────────┬──────────────────────┘
                │
@@ -499,6 +548,7 @@ Examples of features to flag when relevant:
 ┌─────────────────────────────────────┐
 │  PROGRESS RECAP                     │
 │  + Potential issues spotted         │
+│  + Testability smells flagged       │
 │  + Offer Phase 5 if not requested   │
 └──────────────┬──────────────────────┘
                │
@@ -542,6 +592,11 @@ At the end of a session (either when all phases are complete or when the learner
 | File | Line(s) | Issue | Test Written? |
 |---|---|---|---|
 | [path] | [lines] | [one-line description] | Yes — test proves the bug / No — flagged for later |
+
+### 🔧 Testability Smells Flagged
+| File | Line(s) | Smell | Resolution |
+|---|---|---|---|
+| [path] | [lines] | [e.g., "`new EmailService()` inside method — not injectable"] | Refactored — test written / Deferred — test at integration level instead / Noted for later |
 
 ### Test Plan for This Input
 | Behaviour | Test Level | Key Technique | Status |
