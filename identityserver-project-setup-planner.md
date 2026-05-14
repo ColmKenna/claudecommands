@@ -16,8 +16,9 @@ The user will specify:
 1. **Project type** — one of: Razor Pages, MVC, Blazor Server, Blazor WebAssembly, Minimal API, or Web API.
 2. **Project name** — the name for the new ASP.NET Core project.
 3. **Purpose** (optional) — a brief description of what the new project does (e.g. "admin dashboard", "public-facing API for mobile clients").
+4. **Downstream API** (optional) — whether the new project will call an API that is also secured by the same IdentityServer instance. The user may specify the API project name or URL, or simply indicate that downstream API access is required.
 
-If the user omits the project name, use `{{PROJECT_NAME}}` as a placeholder. If the user omits the purpose, proceed without it — it is informational only.
+If the user omits the project name, use `{{PROJECT_NAME}}` as a placeholder. If the user omits the purpose, proceed without it — it is informational only. If the user omits the downstream API option, the plan will not include API-calling configuration.
 
 ---
 
@@ -75,7 +76,19 @@ Scan the IdentityServer project for the following. Check both in-memory configur
 - Whether BFF (Backend for Frontend) pattern is in use (`Duende.BFF` package reference).
 - Whether token management or session management packages are referenced.
 
-#### 1.4 Infer Authentication Flow
+#### 1.4 Discover Downstream API Projects (if applicable)
+
+If the user specified a downstream API, scan the solution to build a picture of the target API:
+
+- **Locate the API project** — by name if specified, or by scanning for projects that use `AddAuthentication` with `JwtBearerDefaults.AuthenticationScheme` or reference `Microsoft.AspNetCore.Authentication.JwtBearer`.
+- **Discover the API's required scopes** — look for `[Authorize]` attributes with policy names, calls to `RequireScope()`, `AddPolicy()` with scope checks, or `options.Audience` / `options.TokenValidationParameters.ValidAudiences` in the API's `Program.cs` / `Startup.cs`.
+- **Discover the API's expected claims** — look for claims accessed via `HttpContext.User`, `ClaimsPrincipal`, `User.FindFirst()`, `User.Claims`, or custom `IAuthorizationHandler` implementations that inspect specific claim types. Record each claim type the API actually reads.
+- **Record the API's base URL** — from `launchSettings.json`, `appsettings.json`, or service discovery configuration.
+- **Check for existing `HttpClient` patterns** — whether the solution already uses `IHttpClientFactory`, named/typed clients, or Duende token management for downstream calls.
+
+This information determines which scopes to request, which claims must be included in the access token, and which claims can be omitted to keep tokens lean.
+
+#### 1.5 Infer Authentication Flow
 
 Based on the **user-specified project type**, infer the recommended authentication flow:
 
@@ -126,6 +139,16 @@ Present the discovery summary in the following structure:
 
 **Recommended Flow for {project type}:** `{flow}` — `{one-line rationale}`
 
+**Downstream API** *(included only when the user requested downstream API access):*
+
+| Property | Value |
+|---|---|
+| API Project | `{project name}` |
+| Base URL | `{URL}` `(source: {where found})` |
+| Required Scopes | `{list of scopes the API enforces}` |
+| Claims Read by API | `{list of claim types the API actually accesses — e.g. sub, email, role}` |
+| Existing HttpClient Pattern | `{IHttpClientFactory / typed client / none detected}` |
+
 **Assumptions & Gaps:**
 - `{any values marked (inferred) or {{PLACEHOLDER}}, with explanation}`
 
@@ -137,6 +160,7 @@ Then ask the user:
 > 1. Is the recommended authentication flow of **{flow}** appropriate for your use case?
 > 2. Are there any scopes or resources missing that the new project will need?
 > 3. Should the new client have any specific requirements (e.g. consent, offline access, specific token lifetimes)?
+> 4. *(If downstream API was specified)* The downstream API reads these claims: **{claims list}**. Are there any additional claims the API needs, or any in this list that should not be forwarded?
 
 Wait for the user's response. Incorporate any corrections or additions before proceeding.
 
@@ -207,18 +231,60 @@ Specify the exact middleware and service configuration to add in `Program.cs`, i
 
 Provide the specific configuration property names and values — not code, but precise "set X to Y" instructions.
 
-#### Step 5: Configure HTTPS and URLs
+#### Step 5: Configure Downstream API Access (conditional — only when downstream API is specified)
+
+This step configures the new project to call a downstream API secured by the same IdentityServer, forwarding only the claims the API needs.
+
+**5.1 HttpClient Registration**
+
+Specify how to register the downstream API's `HttpClient` in DI:
+- Use `IHttpClientFactory` with a named or typed client.
+- Set the base address to the discovered API URL.
+- If the solution already uses a typed-client or named-client pattern, follow the existing convention.
+
+**5.2 Token Forwarding with Minimal Claims**
+
+Specify how to attach the access token to outbound API requests:
+
+- **For server-side projects (Razor Pages, MVC, Blazor Server):** Use a delegating handler that retrieves the access token from the authenticated session (via `IHttpContextAccessor` and `HttpContext.GetTokenAsync("access_token")`) and attaches it as a `Bearer` header. If `Duende.AccessTokenManagement` or `Duende.BFF` is already in use in the solution, prefer that package's `AddClientAccessTokenHttpClient` or `AddUserAccessTokenHttpClient` pattern instead, as it handles token refresh automatically.
+- **For Blazor WebAssembly:** Use `AuthorizationMessageHandler` configured with the API's base URL as an authorised URL.
+- **For API-to-API (machine-to-machine):** Specify client credentials token acquisition using `Duende.AccessTokenManagement` or a manual `IClientCredentialsTokenManagementService` setup.
+
+**5.3 Scope Selection — Request Only What the API Needs**
+
+Specify the exact scopes to request, based on what was discovered in Phase 1.4:
+- Include only the API scopes that the downstream API enforces — do not request every scope available in IdentityServer.
+- Include only the identity scopes (`openid`, `profile`, `email`, etc.) that contain claims the API actually reads.
+- Cross-reference the API's required claims (from Phase 1.4 discovery) against the claims provided by each identity resource. Exclude any identity scope whose claims are not used by the API.
+- Document the rationale: for each scope included, note which API claim(s) depend on it. For each scope excluded, note why it is unnecessary.
+
+**5.4 Claims Filtering on the IdentityServer Side**
+
+Specify any configuration needed on the API Resource or Client definition in IdentityServer to limit which claims appear in the access token:
+- If the API Resource has a `UserClaims` collection, verify it contains only the claim types the API reads — list any that should be added or removed.
+- If the Client definition has `AlwaysSendClientClaims` or `AlwaysIncludeUserClaimsInIdToken` set to true, flag this as a potential source of token bloat and recommend reviewing whether it is needed.
+- Note the distinction: identity tokens carry claims for the client application, access tokens carry claims for the API. Ensure claims are routed to the correct token type.
+
+**5.5 Claims Mapping in the New Project**
+
+If the new project itself needs to read any claims from the downstream API's responses (e.g. for display purposes), specify:
+- Which claims to map from the access token or `UserInfo` endpoint using `ClaimActions.MapJsonKey` or `ClaimActions.MapUniqueJsonKey`.
+- Which default claim mappings to disable via `MapInboundClaims = false` or `JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear()` to prevent unwanted claim type renaming (e.g. `sub` → `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier`).
+
+#### Step 6: Configure HTTPS and URLs
 
 - Specify the port/URL the new project should run on (ensuring no conflict with the discovered IdentityServer URL or other projects in the solution).
 - Detail `launchSettings.json` configuration.
 - Note any CORS configuration needed on the IdentityServer side for the new project's origin.
+- If a downstream API is configured, also note any CORS configuration needed on the API side for the new project's origin.
 
-#### Step 6: Configure App Settings
+#### Step 7: Configure App Settings
 
 Specify what should go in `appsettings.json` and `appsettings.Development.json`:
 - Authority URL.
 - Client ID.
 - Scopes (if externalised from code).
+- If a downstream API is configured: the API base URL, and the specific scopes to request when calling that API.
 - Any other environment-specific values.
 
 Recommend using `dotnet user-secrets` for the client secret in development.
