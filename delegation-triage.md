@@ -239,6 +239,11 @@ Guidance for the classes:
   workhorse before reaching for the frontier-reasoning class.
 - Test *execution* (writing already-agreed tests) never needs more than the fast mid-tier;
   test *design* under High Oracle Ambiguity is where the frontier classes earn their cost.
+- use the following for the latest model information: https://
+developers.openai.com/api/docs/models , https://platform.claude.com/
+docs/en/about-claude/models/overview , https://ai.google.dev/
+gemini-api/docs/models 
+
 
 > **⚠️ Note on model currency:** the concrete model names above (Fable 5, GPT-5.6
 > Sol/Terra/Luna, Gemini 3.5/3.1) reflect the landscape at the time this prompt was written
