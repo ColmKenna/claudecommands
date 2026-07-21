@@ -44,30 +44,33 @@ doc, or (b) clearly labelled authored synthesis ("Authored guidance — synthesi
 item's triage entry"). Never silently blend the two.
 {{PLACEHOLDER}} tokens and (inferred …) markers are semantically load-bearing — surface
 them, never resolve them.
-3. Model-tier lookup — fetch each build, never hardcode from memory
-Coding-model lineups turn over in weeks, and this command may run long after it was last edited.
-Before rendering any model recommendation, fetch the current model docs and rebuild the tier map
-from what's actually there — do not trust a remembered model name or ID:
-
-Anthropic: https://platform.claude.com/docs/en/about-claude/models/overview
-OpenAI: https://developers.openai.com/api/docs/models
-Gemini: https://ai.google.dev/gemini-api/docs/models (andhttps://ai.google.dev/gemini-api/docs/thinking for each model's thinking-level options and
-default)
-From each, extract: model name, API model ID, and its reasoning/effort/thinking-level parameter
-— the option values it accepts and its default. Build a three-tier coding map that reuses the
+3. Model-tier lookup — use the reference table below, do not fetch each build
+Coding-model lineups turn over, but fetching three provider docs on every build is slow and
+costly. Use the embedded reference table below as the source of truth. It reuses the
 delegation-tier vocabulary already in play (human tight-loop / agent-assisted /
-agent-autonomous), so one badge drives both the delegation lane and the model choice:
-TierForPick per providerHuman tight-loop → heaviest reasoningArchitecture calls, security-sensitive or highly ambiguous work, hard bugsEach provider's flagship reasoning model, effort/thinking set to its highest levelAgent-assisted → balancedMost stories: standard business logic, typical endpoint/entity work, test authoringEach provider's mid-tier model, effort/thinking at default or mediumAgent-autonomous → fast/cheapBoilerplate, scaffolding, mechanical/low-risk, high-volume itemsEach provider's fastest/cheapest model, effort/thinking off or lowAs of the last fetch behind this spec (verify this is still current — re-fetch the three URLs
-above and replace this table if it's stale, dated 2026-07-18), that resolved to:
+agent-autonomous), so one badge drives both the delegation lane and the model choice. The big
+architectural shift in this generation: instead of separate model families for logic-heavy
+work, the current engines rely on **Effort Control** / **Extended Thinking** layers that scale
+per problem — so the tier is set by the effort/thinking parameter as much as by the model name.
+
+Reference table (dated 2026-07-18 — this is the authority; only re-check provider docs if a
+model badge is provably wrong or the table is visibly stale):
+
+TierForPick per providerHuman tight-loop → heaviest reasoningArchitecture calls, security-sensitive or highly ambiguous work, hard bugs (black-box failures, race conditions, deep debugging)Each provider's flagship reasoning model, effort/thinking set to its highest levelAgent-assisted → balancedMost stories: standard business logic, typical endpoint/entity work, test authoring, multi-step agentic loopsEach provider's mid-tier model, effort/thinking at default or mediumAgent-autonomous → fast/cheapBoilerplate, scaffolding, DTOs, regexes, scripts, mechanical/low-risk, high-volume, inline completionsEach provider's fastest/cheapest model, effort/thinking off or low
+
 TierAnthropicOpenAIGeminiHeaviest reasoningClaude Opus 4.8 (claude-opus-4-8) — effort: highGPT-5.6 Sol (gpt-5.6-sol) — reasoning: high–xhighGemini 3.1 Pro (gemini-3.1-pro-preview) — thinking_level: highBalancedClaude Sonnet 5 (claude-sonnet-5) — effort: high (medium for lighter items)GPT-5.6 Terra (gpt-5.6-terra) — reasoning: mediumGemini 3.5 Flash (gemini-3.5-flash) — thinking_level: mediumFast/cheapClaude Haiku 4.5 (claude-haiku-4-5) — extended thinking: off/lowGPT-5.6 Luna (gpt-5.6-luna) — reasoning: low–noneGemini 3.1 Flash-Lite (gemini-3.1-flash-lite) — thinking_level: low–minimalFor the rare item that genuinely needs more than the top tier — sustained multi-file agentic
 work spanning many sessions — note Claude Fable 5 (claude-fable-5, adaptive thinking always
 on) as the ceiling option rather than inventing a fourth tier; mention it only when the item's
 own triage entry calls for that kind of long-horizon autonomy.
-Treat the table above as a fallback only. If the live fetch succeeds, use what was actually
-retrieved (model names, IDs, and effort/thinking options change independently of each other,
-and new tiers get added) and say so in the console's footer. If the fetch fails (no network
-access at build time), use this fallback table and mark every model badge it produced
-"unverified — provider docs unreachable at build time."
+
+Agentic-workflow note: for automated agent loops that iterate on errors, running a balanced
+(agent-assisted) model across 3–4 iterative turns is usually faster, cheaper, and more
+successful than forcing a heaviest-tier model to solve it in one attempt.
+
+Provider docs (reference only — consult if the table above is ever proven stale, not on every
+build): Anthropic https://platform.claude.com/docs/en/about-claude/models/overview · OpenAI
+https://developers.openai.com/api/docs/models · Gemini https://ai.google.dev/gemini-api/docs/models
+(thinking-level options at https://ai.google.dev/gemini-api/docs/thinking).
 
 4. The console — structure and features
 One HTML file, zero external dependencies except Google-Fonts @import (must degrade
@@ -155,8 +158,8 @@ letter-spaced mono micro-labels. Responsive to ~380px (filters unstick, badges w
 Structural: details count == summary count; card count == source work-item count;
 briefings/status entries == card count; every data-jump target id exists.
 Model coverage: every card carries a Model recommendation with all three provider picks;
-the fetch-date footnote is present; if the live fetch failed, every affected badge is marked
-unverified rather than silently using the fallback table.
+the reference-table date footnote (2026-07-18) is present on every badge so staleness is
+auditable.
 Functional (if a headless browser is available — try python3 -c "import playwright"):
 no console errors; a tile click opens the right card; a cross-tab ID jump lands and opens;
 filters + search + status cycle + both copy buttons work; screenshot desktop and ~390px
