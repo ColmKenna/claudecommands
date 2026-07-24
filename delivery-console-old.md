@@ -53,12 +53,12 @@ architectural shift in this generation: instead of separate model families for l
 work, the current engines rely on **Effort Control** / **Extended Thinking** layers that scale
 per problem — so the tier is set by the effort/thinking parameter as much as by the model name.
 
-Reference table (dated 2026-07-18 — this is the authority; only re-check provider docs if a
+Reference table (dated 2026-07-21 — this is the authority; only re-check provider docs if a
 model badge is provably wrong or the table is visibly stale):
 
-TierForPick per providerHuman tight-loop → heaviest reasoningArchitecture calls, security-sensitive or highly ambiguous work, hard bugs (black-box failures, race conditions, deep debugging)Each provider's flagship reasoning model, effort/thinking set to its highest levelAgent-assisted → balancedMost stories: standard business logic, typical endpoint/entity work, test authoring, multi-step agentic loopsEach provider's mid-tier model, effort/thinking at default or mediumAgent-autonomous → fast/cheapBoilerplate, scaffolding, DTOs, regexes, scripts, mechanical/low-risk, high-volume, inline completionsEach provider's fastest/cheapest model, effort/thinking off or low
+TierForPick per providerHuman tight-loop → heaviest reasoningArchitecture calls, security-sensitive or highly ambiguous work, hard bugs (black-box failures, race conditions, deep debugging)Each provider's flagship reasoning model, effort/thinking set to its highest level (Gemini thinking_level: high)Agent-assisted → balancedMost stories: standard business logic, typical endpoint/entity work, test authoring, multi-step agentic loopsEach provider's mid-tier model, effort/thinking at default or medium (Gemini thinking_level: medium)Agent-autonomous → fast/cheapBoilerplate, scaffolding, DTOs, regexes, scripts, mechanical/low-risk, high-volume, inline completionsEach provider's fastest/cheapest model, effort/thinking off or low (Gemini thinking_level: low)
 
-TierAnthropicOpenAIGeminiHeaviest reasoningClaude Opus 4.8 (claude-opus-4-8) — effort: highGPT-5.6 Sol (gpt-5.6-sol) — reasoning: high–xhighGemini 3.1 Pro (gemini-3.1-pro-preview) — thinking_level: highBalancedClaude Sonnet 5 (claude-sonnet-5) — effort: high (medium for lighter items)GPT-5.6 Terra (gpt-5.6-terra) — reasoning: mediumGemini 3.5 Flash (gemini-3.5-flash) — thinking_level: mediumFast/cheapClaude Haiku 4.5 (claude-haiku-4-5) — extended thinking: off/lowGPT-5.6 Luna (gpt-5.6-luna) — reasoning: low–noneGemini 3.1 Flash-Lite (gemini-3.1-flash-lite) — thinking_level: low–minimalFor the rare item that genuinely needs more than the top tier — sustained multi-file agentic
+TierAnthropicOpenAIGeminiHeaviest reasoningClaude Opus 4.8 (claude-opus-4-8) — effort: highGPT-5.6 Sol (gpt-5.6-sol) — reasoning: high–xhighGemini 3.1 Pro (gemini-3.1-pro-preview) — thinking_level: highBalancedClaude Sonnet 5 (claude-sonnet-5) — effort: high (medium for lighter items)GPT-5.6 Terra (gpt-5.6-terra) — reasoning: mediumGemini 3.6 Flash (gemini-3.6-flash) — thinking_level: mediumFast/cheapClaude Haiku 4.5 (claude-haiku-4-5) — extended thinking: off/lowGPT-5.6 Luna (gpt-5.6-luna) — reasoning: low–noneGemini 3.1 Flash-Lite (gemini-3.1-flash-lite) — thinking_level: lowFor the rare item that genuinely needs more than the top tier — sustained multi-file agentic
 work spanning many sessions — note Claude Fable 5 (claude-fable-5, adaptive thinking always
 on) as the ceiling option rather than inventing a fourth tier; mention it only when the item's
 own triage entry calls for that kind of long-horizon autonomy.
@@ -112,7 +112,7 @@ Start from the item's delegation tier, but bump it up one level when the item's 
 complexity or risk fields warrant it (e.g. an agent-autonomous item flagged high-risk gets
 the balanced-tier pick, not the fast/cheap one) — note the bump and the field that triggered
 it; never bump down.
-Render all three provider picks — provider — model name (model id) — effort/thinking setting — never just one, since implementers vary in which API they hold a key for.
+Render all three provider picks — provider — model name (model id) — effort/thinking setting (explicitly specifying low, medium, or high for Gemini's thinking_level) — never just one, since implementers vary in which API they hold a key for.
 One line of rationale drawn from the item's own fields (complexity, risk, test tier) —
 never invented.
 A footnote citing the model-tier lookup's fetch date and the three source URLs, so a stale
@@ -158,7 +158,7 @@ letter-spaced mono micro-labels. Responsive to ~380px (filters unstick, badges w
 Structural: details count == summary count; card count == source work-item count;
 briefings/status entries == card count; every data-jump target id exists.
 Model coverage: every card carries a Model recommendation with all three provider picks;
-the reference-table date footnote (2026-07-18) is present on every badge so staleness is
+the reference-table date footnote (2026-07-21) is present on every badge so staleness is
 auditable.
 Functional (if a headless browser is available — try python3 -c "import playwright"):
 no console errors; a tile click opens the right card; a cross-tab ID jump lands and opens;
